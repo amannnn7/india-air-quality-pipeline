@@ -37,11 +37,20 @@ def test_step_change_is_flagged_once_and_noise_is_not(tmp_path):
 
 def test_grouping_marks_simultaneous_shifts():
     def s(day, city, before, after):
-        return {"shift_date": day, "city_name": city, "before_avg_aqi": before, "after_avg_aqi": after,
-                "shift_aqi": after - before}
+        return {
+            "shift_date": day,
+            "city_name": city,
+            "before_avg_aqi": before,
+            "after_avg_aqi": after,
+            "shift_aqi": after - before,
+        }
 
-    shifts = [s("2026-09-08", "Hyderabad", 80, 140), s("2026-09-09", "Pune", 75, 135),
-              s("2026-09-10", "Bengaluru", 70, 125), s("2026-07-14", "Delhi", 150, 90)]
+    shifts = [
+        s("2026-09-08", "Hyderabad", 80, 140),
+        s("2026-09-09", "Pune", 75, 135),
+        s("2026-09-10", "Bengaluru", 70, 125),
+        s("2026-07-14", "Delhi", 150, 90),
+    ]
     groups = group_shifts(shifts)
     assert [g["date"] for g in groups] == ["2026-07-14", "2026-09-08"]
     assert len(groups[1]["shifts"]) == 3 and groups[1]["before"] == 75 and groups[1]["after"] == 133
