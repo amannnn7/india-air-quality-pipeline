@@ -49,6 +49,27 @@ def _dbt_health() -> dict:
     return health
 
 
+SHIFT_THRESHOLD = 50  # keep in sync with var('level_shift_threshold') in dbt_project.yml
+
+
+def group_shifts(shifts: list[dict], window_days: int = 3) -> list[dict]:
+    """Put level shifts that happen within a few days of each other into one row.
+    Several cities shifting together points to the data source rather than the air."""
+    groups: list[dict] = []
+    for s in sorted(shifts, key=lambda r: r["shift_date"]):
+        day = datetime.fromisoformat(str(s["shift_date"])[:10]).date()
+        if groups and (day - groups[-1]["_last"]).days <= window_days:
+            groups[-1]["shifts"].append(s)
+            groups[-1]["_last"] = day
+        else:
+            groups.append({"date": day.isoformat(), "_last": day, "shifts": [s]})
+    for g in groups:
+        g.pop("_last")
+        g["before"] = round(sum(x["before_avg_aqi"] for x in g["shifts"]) / len(g["shifts"]))
+        g["after"] = round(sum(x["after_avg_aqi"] for x in g["shifts"]) / len(g["shifts"]))
+    return groups
+
+
 def build(
     target: str = "duckdb", raw_dir: Path = RAW_DIR, warehouse: Path = WAREHOUSE_PATH, site_dir: Path = SITE_DIR
 ) -> Path:
@@ -77,6 +98,14 @@ def build(
         from stg_air_quality__hourly
         """
     )[0]
+    shifts = wh.query(
+        """
+        select cast(s.shift_date as varchar) as shift_date, c.city_name, s.before_avg_aqi, s.after_avg_aqi, s.shift_aqi
+        from mart_aqi_level_shifts s
+        join dim_city c on c.city_id = s.city_id
+        order by s.shift_date, c.city_name
+        """
+    )
     warehouse_label = wh.label
     wh.close()
 
@@ -94,6 +123,8 @@ def build(
         summary=summary,
         daily=daily,
         stats=stats,
+        shift_groups=group_shifts(shifts),
+        shift_threshold=SHIFT_THRESHOLD,
         health=_dbt_health(),
         warehouse=warehouse_label,
         has_docs=(site_dir / "dbt-docs" / "index.html").exists(),

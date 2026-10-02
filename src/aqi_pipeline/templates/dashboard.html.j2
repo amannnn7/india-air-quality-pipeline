@@ -27,6 +27,7 @@
   .sub { color: var(--muted); max-width: 70ch; margin: 6px 0 0; }
   .note { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
   .banner { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid #f1d27a; border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+  .caveat { border-left: 3px solid var(--line); padding: 2px 0 2px 12px; color: var(--muted); font-size: 14px; max-width: 80ch; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; }
   .grid { display: grid; gap: 16px; }
   .kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
@@ -64,6 +65,11 @@
     <p class="sub">Hourly pollutant readings are pulled every morning, validated, landed as Parquet, loaded into the warehouse, modelled with dbt and tested before this page is rebuilt. AQI follows the CPCB National AQI method.</p>
     <p class="sub" style="margin-top:10px">Warehouse for this build: <strong>{{ warehouse }}</strong>{% if has_docs %} · <a href="dbt-docs/index.html">Data model documentation &amp; lineage (dbt docs)</a>{% endif %}</p>
   </header>
+
+  <p class="caveat" role="note"><strong>About the data:</strong> values come from the CAMS atmospheric model
+  (~45&nbsp;km grid) via Open-Meteo, not from CPCB ground stations. The AQI maths follows CPCB, but the inputs are model
+  estimates: model ozone tends to run high over India, so some days read worse than official bulletins. Sudden lasting
+  jumps are flagged under <a href="#quality">Data-quality flags</a>.</p>
 
   {% if stats.has_synthetic %}
   <div class="banner" role="note"><strong>Demo data.</strong> This build was generated with synthetic sample data (<code>aqi sample</code>) to show the pipeline offline. The scheduled daily run replaces it with real Open-Meteo data.</div>
@@ -120,6 +126,32 @@
     <h2>Every city, every day</h2>
     <p class="note">Each cell is one city-day, coloured by AQI category. Grey means the day did not meet the CPCB data rules.</p>
     <div id="heat" class="chart tall"></div>
+  </section>
+
+  <section class="card" id="quality">
+    <h2>Data-quality flags: sudden level shifts</h2>
+    <p class="note">From the <code>mart_aqi_level_shifts</code> dbt model: dates where a city's 14-day average AQI after the date
+      differs from the 14 days before by at least {{ shift_threshold }} points and by more than twice the normal day-to-day variation. Air quality rarely jumps to a new level overnight and stays
+      there, so these are worth checking. When several cities shift together, the cause is most likely a change at the data source.</p>
+    {% if shift_groups %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Cities</th><th class="num">Avg before</th><th class="num">Avg after</th><th>Likely cause</th></tr></thead>
+        <tbody>
+        {% for g in shift_groups %}
+          <tr>
+            <td>{{ g.date }}</td>
+            <td style="white-space:normal">{% for s in g.shifts %}{{ s.city_name }} ({{ "+" if s.shift_aqi > 0 }}{{ s.shift_aqi }}){{ ", " if not loop.last }}{% endfor %}</td>
+            <td class="num">{{ g.before }}</td><td class="num">{{ g.after }}</td>
+            <td style="white-space:normal">{{ "Several cities at once: probably a data-source change" if g.shifts | length >= 3 else "Single city: could be real (season, local event) or data" }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="note">No level shifts found in the history.</p>
+    {% endif %}
   </section>
 
   <section class="card">

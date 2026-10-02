@@ -49,3 +49,24 @@ models:
     columns:
       - name: city_id
         data_tests: [unique, not_null]
+
+  - name: mart_aqi_level_shifts
+    description: >
+      Data-quality flags: dates where a city's AQI jumped to a new level and stayed there
+      (14-day average before vs after differs by at least var('level_shift_threshold') points).
+      Several cities shifting on the same date usually means a change at the data source, not in the air.
+    columns:
+      - name: level_shift_id
+        data_tests: [unique, not_null]
+      - name: city_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_city')
+                field: city_id
+      - name: direction
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['up', 'down']

@@ -36,3 +36,20 @@ def test_incremental_run_matches_full_refresh(tmp_path):
 
     assert len(full) == 25 * 3
     assert incremental == full
+
+
+def test_backfill_of_older_days_reaches_the_marts(tmp_path):
+    """Regression: back-filling days OLDER than what is already built must not be skipped by the incremental filter."""
+    raw, db = tmp_path / "raw", tmp_path / "wh.duckdb"
+    cities = load_cities()[:2]
+    write_partitions(sample.generate(cities, date(2025, 2, 1), date(2025, 2, 20)), raw, "test", "r1")
+    transform.build(raw_dir=raw, warehouse=db)  # normal daily build
+
+    write_partitions(sample.generate(cities, date(2025, 1, 1), date(2025, 1, 31)), raw, "test", "r2")  # backfill
+    transform.build(raw_dir=raw, warehouse=db, full_refresh=True)
+
+    con = duckdb.connect(str(db))
+    sql = "select min(observed_date), count(distinct observed_date) from fct_city_daily_aqi"
+    first, n = con.execute(sql).fetchone()
+    con.close()
+    assert first == date(2025, 1, 1) and n == 51

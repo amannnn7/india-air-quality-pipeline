@@ -4,7 +4,7 @@
 
 A production-style ELT pipeline that calculates the daily **Indian National AQI** (CPCB method) for 10 cities.
 Every morning it pulls hourly pollution readings from a public API, validates them against a data contract,
-lands them as Parquet, transforms them with an **incremental dbt** star schema, runs **24 data tests**,
+lands them as Parquet, transforms them with an **incremental dbt** star schema, runs **29 data tests**, flags sudden level shifts in the data,
 publishes **dbt docs**, and rebuilds a dashboard.
 
 It runs daily on **DuckDB**. The same dbt models also have a **Snowflake** production target
@@ -41,7 +41,7 @@ flowchart LR
 | **Python engineering**: packaging, CLI, type hints, retries with back-off, Pydantic data contracts, PyArrow | `src/aqi_pipeline/` |
 | **Data lake basics**: Hive-partitioned Parquet, idempotent overwrite, atomic writes | `src/aqi_pipeline/load.py` |
 | **Orchestration**: GitHub Actions schedule, Apache Airflow 3 DAG with retries | `.github/workflows/daily.yml`, `orchestration/airflow_dag.py` |
-| **Testing & CI/CD**: 21 pytest tests (unit, end-to-end, incremental-vs-full-refresh, Snowflake emulator), ruff, Docker build in CI | `tests/`, `.github/workflows/ci.yml` |
+| **Testing & CI/CD**: 24 pytest tests (unit, end-to-end, incremental-vs-full-refresh, Snowflake emulator), ruff, Docker build in CI | `tests/`, `.github/workflows/ci.yml` |
 | **Containers**: Dockerfile, non-root user, env-file secrets | `Dockerfile` |
 | **Security & cost**: no passwords (RSA keys), secrets in GitHub Secrets, least-privilege role, 5-credit monthly cap | `snowflake/setup.sql` |
 
@@ -77,6 +77,13 @@ docker build -t aqi-pipeline . && docker run --rm aqi-pipeline sample --days 15
 
 `AQI_TARGET=duckdb` (the default) runs the identical dbt models on a local DuckDB file. It's used for
 development and CI so tests never need cloud credentials, and as a fallback warehouse.
+
+## Data-quality monitoring
+
+`mart_aqi_level_shifts` flags dates where a city's 14-day average AQI jumps by 50+ points **and** by more than
+twice its normal day-to-day spread, then stays there. Real air rarely does that overnight; when several cities
+shift on the same date, the cause is almost always upstream (e.g. a model update at the data provider).
+The dashboard lists these flags and says which look like data-source changes.
 
 ## Honest limitations
 

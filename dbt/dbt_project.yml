@@ -22,6 +22,8 @@ vars:
   min_pollutants_for_aqi: 3
   # Incremental runs re-process this many recent days, because the source can correct recent values.
   lookback_days: 3
+  # mart_aqi_level_shifts: flag a city when its 14-day average AQI jumps by at least this much and stays there
+  level_shift_threshold: 50
 
 models:
   aqi:

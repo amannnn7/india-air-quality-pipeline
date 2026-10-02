@@ -29,11 +29,15 @@ def run_dbt(*args: str, target: str = "duckdb", raw_dir: Path = RAW_DIR, warehou
         raise RuntimeError(f"dbt {' '.join(args)} failed - see the log above for the failing model/test")
 
 
-def build(target: str = "duckdb", raw_dir: Path = RAW_DIR, warehouse: Path = WAREHOUSE_PATH) -> None:
+def build(
+    target: str = "duckdb", raw_dir: Path = RAW_DIR, warehouse: Path = WAREHOUSE_PATH, full_refresh: bool = False
+) -> None:
+    """full_refresh=True rebuilds the incremental model from all raw data. A backfill needs it: the normal
+    incremental run only re-processes the last few days, so older back-filled days would never reach the marts."""
     kw = {"target": target, "raw_dir": raw_dir, "warehouse": warehouse}
     # `dbt build` = load seeds, build every model, and run every test, in dependency order.
     # If a test on an upstream model fails, the models downstream of it are skipped.
-    run_dbt("build", **kw)
+    run_dbt("build", *(["--full-refresh"] if full_refresh else []), **kw)
     # keep this run's results: later dbt commands (docs, freshness) overwrite run_results.json
     shutil.copyfile(DBT_DIR / "target" / "run_results.json", DBT_DIR / "target" / "build_results.json")
     # Freshness check: warns/fails if the newest raw data is too old (e.g. the API stopped updating).

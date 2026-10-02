@@ -140,7 +140,8 @@ def main(argv: list[str] | None = None) -> int:
 
     kw = {"target": target, "raw_dir": raw_dir, "warehouse": warehouse}
     if args.command in {"run", "backfill", "sample", "transform"}:
-        transform.build(**kw)
+        # backfill loads OLDER days, which an incremental run would skip, so it rebuilds the marts in full
+        transform.build(**kw, full_refresh=args.command == "backfill")
     if args.command in {"run", "backfill", "sample", "report"}:
         transform.docs(SITE_DIR, **kw)
         # print, not log: dbt reconfigures Python logging while it runs
