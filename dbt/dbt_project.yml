@@ -1,0 +1,47 @@
+name: aqi
+version: "2.0.0"
+config-version: 2
+profile: aqi
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# On DuckDB the raw layer is a view over the local Parquet files.
+# On Snowflake the raw table already exists (the Python loader MERGEs into it), so this does nothing.
+on-run-start:
+  - "{{ create_duckdb_raw_view() }}"
+
+vars:
+  # A day counts only if at least 16 of 24 hours have data (CPCB rule for 24-hour averages).
+  min_hours_for_valid_day: 16
+  # CPCB: an AQI needs at least 3 pollutants, one of them PM2.5 or PM10.
+  min_pollutants_for_aqi: 3
+  # Incremental runs re-process this many recent days, because the source can correct recent values.
+  lookback_days: 3
+
+models:
+  aqi:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+seeds:
+  aqi:
+    +schema: ref
+    cities:
+      +column_types:
+        latitude: double
+        longitude: double
+    aqi_breakpoints:
+      +column_types:
+        index_low: double
+        index_high: double
+        conc_low: double
+        conc_high: double

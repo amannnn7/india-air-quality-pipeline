@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>India Air Quality Pipeline</title>
+<meta name="description" content="Daily National AQI for 10 Indian cities, built by an automated, tested data pipeline (Python, dbt, DuckDB, GitHub Actions)." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f6f3; --card: #ffffff; --ink: #1b2320; --muted: #5a6661; --line: #dde2dd;
+    --accent: #0e6e5c; --warn-bg: #fff4d6; --warn-ink: #6b4b00;
+    --good: #00a650; --satisfactory: #8cc63f; --moderate: #f2c200; --poor: #f7941d; --verypoor: #e5202e; --severe: #8b0f23;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans); padding-inline: 16px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-block: 28px 56px; display: flex; flex-direction: column; gap: 22px; }
+  h1 { font-size: clamp(1.6rem, 3.5vw, 2.3rem); line-height: 1.15; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+  h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  .eyebrow { font: 500 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  .sub { color: var(--muted); max-width: 70ch; margin: 6px 0 0; }
+  .note { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  .banner { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid #f1d27a; border-radius: 10px; padding: 10px 14px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; min-width: 0; }
+  .grid { display: grid; gap: 16px; }
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .kpi .label { font-size: 13px; color: var(--muted); }
+  .kpi .value { font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .kpi .detail { font-size: 13px; color: var(--muted); }
+  .two { grid-template-columns: 1fr; }
+  @media (min-width: 900px) { .two { grid-template-columns: 1fr 1fr; } }
+  .chart { width: 100%; height: 380px; }
+  .chart.tall { height: 440px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--c); }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font: 500 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  td.num, th.num { text-align: right; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; background: var(--c); }
+  .pill.dark { color: #1b2320; }
+  .health { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .ok { color: #0a7a3e; } .bad { color: #b3261e; } .warnc { color: #8a5a00; }
+  .flow { font: 13px var(--mono); color: var(--muted); overflow-x: auto; white-space: nowrap; padding-top: 6px; }
+  details summary { cursor: pointer; font-weight: 600; }
+  details p, details li { color: var(--muted); max-width: 80ch; }
+  a { color: var(--accent); }
+  footer { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">Daily data pipeline · Python · dbt · {{ "Snowflake" if "Snowflake" in warehouse else "DuckDB" }} · Airflow · GitHub Actions</div>
+    <h1>India Air Quality: National AQI for 10 cities</h1>
+    <p class="sub">Hourly pollutant readings are pulled every morning, validated, landed as Parquet, loaded into the warehouse, modelled with dbt and tested before this page is rebuilt. AQI follows the CPCB National AQI method.</p>
+    <p class="sub" style="margin-top:10px">Warehouse for this build: <strong>{{ warehouse }}</strong>{% if has_docs %} · <a href="dbt-docs/index.html">Data model documentation &amp; lineage (dbt docs)</a>{% endif %}</p>
+  </header>
+
+  {% if stats.has_synthetic %}
+  <div class="banner" role="note"><strong>Demo data.</strong> This build was generated with synthetic sample data (<code>aqi sample</code>) to show the pipeline offline. The scheduled daily run replaces it with real Open-Meteo data.</div>
+  {% endif %}
+
+  {% set worst = summary[0] %}
+  {% set best = summary | selectattr('latest_aqi') | sort(attribute='latest_aqi') | first %}
+  <section class="grid kpis" aria-label="Headline numbers">
+    <div class="card kpi">
+      <div class="label">Most polluted, last 30 days</div>
+      <div class="value">{{ worst.city_name }}</div>
+      <div class="detail">average AQI {{ worst.avg_aqi_30d }} · {{ worst.poor_or_worse_days }} days Poor or worse</div>
+    </div>
+    <div class="card kpi">
+      <div class="label">Cleanest latest day</div>
+      <div class="value">{{ best.city_name }}</div>
+      <div class="detail">AQI {{ best.latest_aqi }} ({{ best.latest_category }}) on {{ best.latest_date }}</div>
+    </div>
+    <div class="card kpi">
+      <div class="label">Cities Poor or worse, latest day</div>
+      <div class="value">{{ summary | selectattr('latest_aqi') | selectattr('latest_aqi', 'gt', 200) | list | length }} / {{ stats.cities }}</div>
+      <div class="detail">AQI above 200 is "Poor" under CPCB bands</div>
+    </div>
+    <div class="card kpi">
+      <div class="label">History in the warehouse</div>
+      <div class="value">{{ stats.days }} days</div>
+      <div class="detail">{{ stats.first_day }} to {{ stats.last_day }} · {{ "{:,}".format(stats.hourly_rows) }} hourly rows</div>
+    </div>
+  </section>
+
+  <div class="legend" aria-label="AQI category colours">
+    <span style="--c:var(--good)">Good 0–50</span>
+    <span style="--c:var(--satisfactory)">Satisfactory 51–100</span>
+    <span style="--c:var(--moderate)">Moderate 101–200</span>
+    <span style="--c:var(--poor)">Poor 201–300</span>
+    <span style="--c:var(--verypoor)">Very Poor 301–400</span>
+    <span style="--c:var(--severe)">Severe 401–500</span>
+  </div>
+
+  <section class="grid two">
+    <div class="card">
+      <h2>Latest AQI by city</h2>
+      <p class="note">Label shows the pollutant that set the AQI that day.</p>
+      <div id="latest" class="chart"></div>
+    </div>
+    <div class="card">
+      <h2>Daily AQI trend</h2>
+      <p class="note">Click a city in the legend to hide or show it. Background bands are the CPCB categories.</p>
+      <div id="trend" class="chart"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Every city, every day</h2>
+    <p class="note">Each cell is one city-day, coloured by AQI category. Grey means the day did not meet the CPCB data rules.</p>
+    <div id="heat" class="chart tall"></div>
+  </section>
+
+  <section class="card">
+    <h2>30-day summary</h2>
+    <p class="note">From the <code>mart_city_aqi_summary</code> dbt model.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th class="num">Rank</th><th>City</th><th>State</th><th class="num">Latest</th><th>Category</th>
+          <th class="num">Avg 30d</th><th class="num">Worst</th><th class="num">Good/Satisf. days</th><th class="num">Poor+ days</th><th>Usual dominant</th>
+        </tr></thead>
+        <tbody>
+        {% for r in summary %}
+          <tr>
+            <td class="num">{{ r.pollution_rank_30d }}</td><td>{{ r.city_name }}</td><td>{{ r.state }}</td>
+            <td class="num">{{ r.latest_aqi if r.latest_aqi is not none else "–" }}</td>
+            <td>{% if r.latest_category %}<span class="pill {{ 'dark' if r.latest_category in ['Satisfactory','Moderate'] }}" data-cat="{{ r.latest_category }}">{{ r.latest_category }}</span>{% endif %}</td>
+            <td class="num">{{ r.avg_aqi_30d }}</td><td class="num">{{ r.worst_aqi_30d }}</td>
+            <td class="num">{{ r.good_or_satisfactory_days }}</td><td class="num">{{ r.poor_or_worse_days }}</td>
+            <td>{{ r.usual_dominant_pollutant | pollutant }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Pipeline health</h2>
+    <p class="note">Read from dbt's own run artefacts at build time.</p>
+    <div class="grid health">
+      <div class="kpi"><div class="label">dbt tests passed</div>
+        <div class="value {{ 'ok' if health.tests_passed == health.tests_total and health.tests_total > 0 else 'bad' }}">{{ health.tests_passed }} / {{ health.tests_total }}</div></div>
+      <div class="kpi"><div class="label">Models built</div><div class="value">{{ health.models }}</div></div>
+      <div class="kpi"><div class="label">Source freshness</div>
+        <div class="value {{ {'pass':'ok','warn':'warnc','error':'bad'}.get(health.freshness, '') }}">{{ health.freshness }}</div></div>
+      <div class="kpi"><div class="label">Raw Parquet files</div><div class="value">{{ "{:,}".format(raw_files) }}</div></div>
+    </div>
+    {% if health.failed %}<p class="bad">Failed tests: {{ health.failed | join(", ") }}</p>{% endif %}
+    <p class="note" style="margin-top:12px">Last dbt build {{ health.built_at or "–" }} ({{ health.elapsed_s or "–" }} s) · newest raw data loaded {{ health.max_loaded_at or "–" }} · page generated {{ generated_at }}</p>
+    <div class="flow">Open-Meteo API → contract check (Pydantic) → Parquet lake → {% if warehouse == "Snowflake" %}PUT → stage → COPY INTO → MERGE into RAW → {% endif %}dbt on {{ warehouse }}: staging → intermediate → marts ({{ health.tests_total }} tests) → this page</div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Method and limitations</summary>
+      <ul>
+        <li><strong>Source:</strong> Open-Meteo Air Quality API, which serves the Copernicus CAMS global model (~45 km grid). These are modelled values for the city's grid cell, not readings from CPCB ground stations, so they will differ from the official CPCB bulletin.</li>
+        <li><strong>AQI method:</strong> 24-hour averages for PM2.5, PM10, NO₂, SO₂; the highest 8-hour rolling average for O₃ and CO. Each value gets a sub-index by linear interpolation inside the CPCB breakpoints; the day's AQI is the highest sub-index.</li>
+        <li><strong>Validity rules:</strong> a 24-hour average needs at least 16 hours of data, and an AQI needs at least 3 pollutants including PM2.5 or PM10. Days that fail are kept but shown without an AQI.</li>
+        <li><strong>Simplifications:</strong> NH₃ and lead are not in the source, so they are not used. CPCB gives no upper concentration for "Severe"; conventional caps are used and the AQI is capped at 500.</li>
+      </ul>
+    </details>
+  </section>
+
+  <footer>Built by <a href="https://amannnn7.github.io/portfolio/">Aman</a> · <a href="https://github.com/amannnn7/india-air-quality-pipeline">source code</a> · Data: <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0), CAMS</footer>
+</div>
+
+<script>
+const DAILY = {{ daily | tojson }};
+const SUMMARY = {{ summary | tojson }};
+const css = getComputedStyle(document.documentElement);
+const CAT = {
+  "Good": css.getPropertyValue("--good").trim(), "Satisfactory": css.getPropertyValue("--satisfactory").trim(),
+  "Moderate": css.getPropertyValue("--moderate").trim(), "Poor": css.getPropertyValue("--poor").trim(),
+  "Very Poor": css.getPropertyValue("--verypoor").trim(), "Severe": css.getPropertyValue("--severe").trim(),
+};
+const ORDER = ["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe"];
+const BANDS = [[0,50,"Good"],[50,100,"Satisfactory"],[100,200,"Moderate"],[200,300,"Poor"],[300,400,"Very Poor"],[400,500,"Severe"]];
+const PRETTY = p => ({pm2_5:"PM2.5", pm10:"PM10", no2:"NO₂", so2:"SO₂", o3:"O₃", co:"CO"}[p] || "–");
+const base = { font: {family: css.getPropertyValue("--sans"), size: 12, color: "#1b2320"}, paper_bgcolor: "#fff", plot_bgcolor: "#fff",
+               margin: {l: 90, r: 16, t: 8, b: 40} };
+const cfg = { responsive: true, displayModeBar: false };
+
+document.querySelectorAll(".pill[data-cat]").forEach(el => el.style.setProperty("--c", CAT[el.dataset.cat]));
+
+// 1) latest AQI bar chart
+const latest = SUMMARY.filter(r => r.latest_aqi != null).sort((a, b) => a.latest_aqi - b.latest_aqi);
+const domByCity = {};
+DAILY.forEach(r => { if (r.aqi != null) domByCity[r.city_name] = r.dominant_pollutant; });
+Plotly.newPlot("latest", [{
+  type: "bar", orientation: "h", y: latest.map(r => r.city_name), x: latest.map(r => r.latest_aqi),
+  marker: {color: latest.map(r => CAT[r.latest_category])},
+  text: latest.map(r => `${r.latest_aqi} · ${PRETTY(domByCity[r.city_name])}`), textposition: "outside", cliponaxis: false,
+  hovertemplate: "%{y}: AQI %{x}<extra></extra>",
+}], {...base, xaxis: {title: "AQI", gridcolor: "#eef0ec", range: [0, Math.max(120, ...latest.map(r => r.latest_aqi)) * (innerWidth < 600 ? 1.5 : 1.2)]},
+     yaxis: {automargin: true}}, cfg);
+
+// 2) trend lines with category bands
+const cities = [...new Set(DAILY.map(r => r.city_name))];
+const defaultOn = new Set(SUMMARY.slice(0, 3).map(r => r.city_name).concat(SUMMARY.slice(-1).map(r => r.city_name)));
+const palette = ["#0f766e","#6d28d9","#c2410c","#1d4ed8","#be185d","#15803d","#b91c1c","#a16207","#334155","#0891b2"];
+const yMax = Math.max(150, ...DAILY.map(r => r.aqi || 0)) * 1.1;
+Plotly.newPlot("trend", cities.map((c, i) => {
+  const rows = DAILY.filter(r => r.city_name === c);
+  return { type: "scatter", mode: "lines", name: c, x: rows.map(r => r.d), y: rows.map(r => r.aqi),
+           line: {width: 2, color: palette[i % palette.length]}, visible: defaultOn.has(c) ? true : "legendonly",
+           hovertemplate: `${c}<br>%{x}: AQI %{y}<extra></extra>` };
+}), {...base, margin: {l: 44, r: 8, t: 8, b: 40}, legend: {orientation: "h", y: -0.18},
+     yaxis: {title: "AQI", range: [0, yMax], gridcolor: "rgba(0,0,0,0)"}, xaxis: {gridcolor: "#eef0ec"},
+     shapes: BANDS.filter(b => b[0] < yMax).map(b => ({type: "rect", xref: "paper", x0: 0, x1: 1, y0: b[0], y1: Math.min(b[1], yMax),
+                                                     fillcolor: CAT[b[2]], opacity: 0.12, line: {width: 0}, layer: "below"}))}, cfg);
+
+// 3) heatmap: city x day, coloured by category
+const days = [...new Set(DAILY.map(r => r.d))];
+const heatCities = [...SUMMARY].reverse().map(r => r.city_name);
+const idx = {}; DAILY.forEach(r => { idx[r.city_name + "|" + r.d] = r; });
+const z = heatCities.map(c => days.map(d => { const r = idx[c + "|" + d]; return r && r.aqi_category ? ORDER.indexOf(r.aqi_category) : null; }));
+const txt = heatCities.map(c => days.map(d => { const r = idx[c + "|" + d]; return r && r.aqi != null ? `${c}, ${d}<br>AQI ${r.aqi} (${r.aqi_category}) · ${PRETTY(r.dominant_pollutant)}` : `${c}, ${d}<br>no valid AQI`; }));
+const scale = []; ORDER.forEach((k, i) => { scale.push([i / 6, CAT[k]], [(i + 1) / 6, CAT[k]]); });
+Plotly.newPlot("heat", [{type: "heatmap", x: days, y: heatCities, z, text: txt, hoverinfo: "text", zmin: -0.5, zmax: 5.5,
+  colorscale: scale, showscale: false, xgap: 1, ygap: 1, hoverongaps: false}],
+  {...base, margin: {l: 90, r: 16, t: 8, b: 56}, plot_bgcolor: "#e9ece8", xaxis: {showgrid: false}, yaxis: {automargin: true, showgrid: false}}, cfg);
+</script>
+</body>
+</html>

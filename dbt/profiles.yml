@@ -1,0 +1,24 @@
+# Where dbt runs. Two targets, same models:
+#   dev  -> DuckDB file on your laptop / in CI (free, offline, no credentials)
+#   prod -> Snowflake (the real warehouse), key-pair authentication, secrets from env vars
+aqi:
+  target: "{{ env_var('AQI_DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('AQI_WAREHOUSE', '../data/warehouse.duckdb') }}"
+      threads: 4
+
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'not-set') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'not-set') }}"
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH', 'not-set') }}"
+      private_key_passphrase: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PASSPHRASE', '') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'AQI_PIPELINE_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'AQI_WH') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'AQI') }}"
+      schema: ANALYTICS
+      threads: 4
+      query_tag: aqi-pipeline:dbt
+      client_session_keep_alive: false

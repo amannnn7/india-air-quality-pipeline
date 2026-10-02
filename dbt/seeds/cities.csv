@@ -1,0 +1,11 @@
+city_id,city_name,state,region,latitude,longitude
+delhi,Delhi,Delhi,North,28.6139,77.2090
+lucknow,Lucknow,Uttar Pradesh,North,26.8467,80.9462
+patna,Patna,Bihar,East,25.5941,85.1376
+kolkata,Kolkata,West Bengal,East,22.5726,88.3639
+ahmedabad,Ahmedabad,Gujarat,West,23.0225,72.5714
+mumbai,Mumbai,Maharashtra,West,19.0760,72.8777
+pune,Pune,Maharashtra,West,18.5204,73.8567
+hyderabad,Hyderabad,Telangana,South,17.3850,78.4867
+bengaluru,Bengaluru,Karnataka,South,12.9716,77.5946
+chennai,Chennai,Tamil Nadu,South,13.0827,80.2707

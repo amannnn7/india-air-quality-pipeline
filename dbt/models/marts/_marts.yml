@@ -1,0 +1,51 @@
+version: 2
+
+models:
+  - name: dim_city
+    description: Cities tracked by the pipeline, with state and region.
+    columns:
+      - name: city_id
+        data_tests: [unique, not_null]
+
+  - name: fct_city_daily_aqi
+    description: >
+      Daily Indian National AQI per city, calculated with the CPCB sub-index method from
+      modelled (CAMS) concentrations. Grain: one row per city per day.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            columns: [city_id, observed_date]
+    columns:
+      - name: daily_aqi_id
+        description: Surrogate key "<city_id>|<yyyy-mm-dd>".
+        data_tests: [unique, not_null]
+      - name: city_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_city')
+                field: city_id
+      - name: aqi
+        description: Highest pollutant sub-index of the day (0-500). Null when CPCB validity rules are not met.
+        data_tests:
+          - value_in_range: {arguments: {min_value: 0, max_value: 500}}
+      - name: aqi_category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Good', 'Satisfactory', 'Moderate', 'Poor', 'Very Poor', 'Severe']
+      - name: dominant_pollutant
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['pm2_5', 'pm10', 'no2', 'so2', 'o3', 'co']
+      - name: hours_reported
+        data_tests:
+          - value_in_range: {arguments: {min_value: 1, max_value: 24}}
+
+  - name: mart_city_aqi_summary
+    description: Last-30-day summary per city (average, worst, days by category, usual dominant pollutant, rank).
+    columns:
+      - name: city_id
+        data_tests: [unique, not_null]

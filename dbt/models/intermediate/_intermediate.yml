@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: int_pollutant_daily
+    description: >
+      Daily pollutant values in the form the CPCB method needs: 24-hour averages for PM2.5, PM10,
+      NO2, SO2 and the highest 8-hour rolling average for O3 and CO, with hours of coverage.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            columns: [city_id, observed_date]
+    columns:
+      - name: hours_reported
+        description: Hours with any data that day (max 24).
+      - name: o3_8h_max
+        description: Highest 8-hour rolling O3 average of the day (µg/m³); windows need ≥ 6 of 8 hours.
+      - name: co_8h_max
+        description: Highest 8-hour rolling CO average of the day (mg/m³); windows need ≥ 6 of 8 hours.

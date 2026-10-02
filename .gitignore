@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Rebuildable outputs (never commit these)
+data/warehouse.duckdb
+data/warehouse.duckdb.wal
+data/sample/
+site/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+logs/
+dbt/.user.yml
+
+# Snowflake private keys - NEVER commit
+keys/
+*.p8
+.env

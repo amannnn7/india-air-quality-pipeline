@@ -1,0 +1,37 @@
+pollutant,category,index_low,index_high,conc_low,conc_high,unit,averaging
+pm2_5,Good,0,50,0,30,ug/m3,24h mean
+pm2_5,Satisfactory,50,100,30,60,ug/m3,24h mean
+pm2_5,Moderate,100,200,60,90,ug/m3,24h mean
+pm2_5,Poor,200,300,90,120,ug/m3,24h mean
+pm2_5,Very Poor,300,400,120,250,ug/m3,24h mean
+pm2_5,Severe,400,500,250,380,ug/m3,24h mean
+pm10,Good,0,50,0,50,ug/m3,24h mean
+pm10,Satisfactory,50,100,50,100,ug/m3,24h mean
+pm10,Moderate,100,200,100,250,ug/m3,24h mean
+pm10,Poor,200,300,250,350,ug/m3,24h mean
+pm10,Very Poor,300,400,350,430,ug/m3,24h mean
+pm10,Severe,400,500,430,510,ug/m3,24h mean
+no2,Good,0,50,0,40,ug/m3,24h mean
+no2,Satisfactory,50,100,40,80,ug/m3,24h mean
+no2,Moderate,100,200,80,180,ug/m3,24h mean
+no2,Poor,200,300,180,280,ug/m3,24h mean
+no2,Very Poor,300,400,280,400,ug/m3,24h mean
+no2,Severe,400,500,400,800,ug/m3,24h mean
+so2,Good,0,50,0,40,ug/m3,24h mean
+so2,Satisfactory,50,100,40,80,ug/m3,24h mean
+so2,Moderate,100,200,80,380,ug/m3,24h mean
+so2,Poor,200,300,380,800,ug/m3,24h mean
+so2,Very Poor,300,400,800,1600,ug/m3,24h mean
+so2,Severe,400,500,1600,2100,ug/m3,24h mean
+o3,Good,0,50,0,50,ug/m3,max 8h rolling mean
+o3,Satisfactory,50,100,50,100,ug/m3,max 8h rolling mean
+o3,Moderate,100,200,100,168,ug/m3,max 8h rolling mean
+o3,Poor,200,300,168,208,ug/m3,max 8h rolling mean
+o3,Very Poor,300,400,208,748,ug/m3,max 8h rolling mean
+o3,Severe,400,500,748,1000,ug/m3,max 8h rolling mean
+co,Good,0,50,0,1,mg/m3,max 8h rolling mean
+co,Satisfactory,50,100,1,2,mg/m3,max 8h rolling mean
+co,Moderate,100,200,2,10,mg/m3,max 8h rolling mean
+co,Poor,200,300,10,17,mg/m3,max 8h rolling mean
+co,Very Poor,300,400,17,34,mg/m3,max 8h rolling mean
+co,Severe,400,500,34,50,mg/m3,max 8h rolling mean

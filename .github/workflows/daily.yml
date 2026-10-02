@@ -1,0 +1,99 @@
+# DAILY PIPELINE: every morning at 07:00 IST.
+#   1. Fetch the last 3 finished days for every city (first run: back-fill 90 days)
+#   2. Land them as Parquet, then PUT -> COPY INTO -> MERGE them into Snowflake RAW
+#   3. dbt build on Snowflake (models + tests), source freshness, dbt docs
+#   4. Rebuild the dashboard and publish it (plus the dbt docs) on GitHub Pages
+#   5. Commit the raw Parquet files to the repo (backup copy of the raw layer)
+#
+# Warehouse choice: if the SNOWFLAKE_* secrets are set, the run uses Snowflake.
+# If they are not set (or you remove them when the trial ends) it runs on DuckDB instead,
+# so the dashboard keeps updating either way.
+#
+# If any step fails (API down, contract broken, dbt test failed) the job goes red,
+# GitHub emails the repo owner, and yesterday's dashboard stays online.
+name: Daily pipeline
+
+on:
+  schedule:
+    - cron: "30 1 * * *" # 01:30 UTC = 07:00 IST
+  workflow_dispatch:
+    inputs:
+      backfill_days:
+        description: "Optional: re-load this many past days instead of the normal 3"
+        required: false
+        default: ""
+
+permissions:
+  contents: write # to commit new raw data
+  pages: write # to publish the dashboard
+  id-token: write # required by the Pages deploy action
+
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false # never run two loads at the same time
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    env:
+      AQI_TARGET: ${{ secrets.SNOWFLAKE_ACCOUNT != '' && 'snowflake' || 'duckdb' }}
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Write the Snowflake private key from the repository secret
+        if: env.AQI_TARGET == 'snowflake'
+        env:
+          KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/rsa_key.p8"
+          printf '%s\n' "$KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Extract, load, transform, test, report  (warehouse = ${{ env.AQI_TARGET }})
+        env:
+          BACKFILL_DAYS: ${{ github.event.inputs.backfill_days }}
+        run: |
+          YESTERDAY=$(TZ=Asia/Kolkata date -d "yesterday" +%F)
+          if [ -n "$BACKFILL_DAYS" ]; then
+            aqi backfill --start "$(TZ=Asia/Kolkata date -d "$BACKFILL_DAYS days ago" +%F)" --end "$YESTERDAY"
+          elif ! ls data/raw/air_quality_hourly/*/ >/dev/null 2>&1; then
+            echo "No data yet - first run, back-filling 90 days"
+            aqi backfill --start "$(TZ=Asia/Kolkata date -d "90 days ago" +%F)" --end "$YESTERDAY"
+          else
+            aqi run --days 3
+          fi
+
+      - name: Commit new raw data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/raw
+          if git diff --cached --quiet; then
+            echo "No new data to commit"
+          else
+            git commit -m "data: load up to $(TZ=Asia/Kolkata date -d yesterday +%F) [skip ci]"
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: stg_air_quality__hourly
+    description: Cleaned hourly pollutant concentrations, one row per city per hour (India local time).
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            columns: [city_id, observed_at]
+    columns:
+      - name: city_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('cities')
+                field: city_id
+      - name: observed_at
+        data_tests: [not_null]
+      - name: pm2_5
+        description: Fine particles (≤2.5 µm), µg/m³.
+        data_tests:
+          - value_in_range: {arguments: {min_value: 0, max_value: 2000}}
+      - name: pm10
+        description: Coarse particles (≤10 µm), µg/m³.
+        data_tests:
+          - value_in_range: {arguments: {min_value: 0, max_value: 3000}}
+      - name: co_mg_m3
+        description: Carbon monoxide converted to mg/m³.
